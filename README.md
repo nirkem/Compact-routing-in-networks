@@ -42,7 +42,7 @@ detour is what bounds the stretch at 3.
 | `HelperMethods.py` | Statistics and Matplotlib visualization. |
 | `Main.py` | Command-line demo driver. |
 | `test_stretch.py` | Checks paths are valid and stretch stays <= 3. |
-| `visualizer.html` | Standalone interactive visualization (no install). |
+| `index.html` | Standalone interactive visualization (no install). |
 
 ## Running
 
@@ -79,7 +79,9 @@ path is a valid walk from source to target and no stretch exceeds 3.
 
 ## Interactive visualization
 
-Open `visualizer.html` in any browser (no server, no install). Generate a
-graph, see landmarks and a cluster highlighted, click a source and target, and
-watch the compact route build hop by hop next to the shortest path, with the
-live stretch shown.
+**Live demo: https://nirkem.github.io/Compact-routing-in-networks/**
+
+Or open `index.html` in any browser (no server, no install). Generate a graph,
+see landmarks and a cluster highlighted, click a source and target, and watch
+the compact route build hop by hop next to the shortest path, with the live
+stretch shown.
