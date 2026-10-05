@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Compact Routing Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" />
+<style>
+  /* Layout: a fixed control rail beside a large graph stage, stats underneath; stacks on phones. */
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-2: #1c232d;
+    --edge: #30363d;
+    --fg: #e6edf3;
+    --muted: #8b96a5;
+    --accent: #39d0c8;      /* network teal, the one bold hue */
+    --landmark: #f5a623;    /* group A */
+    --routed: #ef5350;      /* routed path */
+    --shortest: #4caf50;    /* true shortest path */
+    --cluster: #7c6cf0;     /* cluster of the source */
+    --node: #3b4654;
+    --node-fg: #e6edf3;
+    --shadow: 0 1px 0 rgba(255,255,255,.03), 0 8px 24px rgba(0,0,0,.35);
+    --radius: 12px;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4f6f9;
+      --panel: #ffffff;
+      --panel-2: #eef2f7;
+      --edge: #d7dee7;
+      --fg: #1a2230;
+      --muted: #5d6b7e;
+      --accent: #0f9e96;
+      --landmark: #c9790a;
+      --routed: #d32f2f;
+      --shortest: #2e7d32;
+      --cluster: #5a48d6;
+      --node: #cfd9e5;
+      --node-fg: #1a2230;
+      --shadow: 0 1px 0 rgba(255,255,255,.6), 0 8px 24px rgba(16,30,54,.10);
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f6f9; --panel: #ffffff; --panel-2: #eef2f7; --edge: #d7dee7;
+    --fg: #1a2230; --muted: #5d6b7e; --accent: #0f9e96; --landmark: #c9790a;
+    --routed: #d32f2f; --shortest: #2e7d32; --cluster: #5a48d6; --node: #cfd9e5;
+    --node-fg: #1a2230; --shadow: 0 1px 0 rgba(255,255,255,.6), 0 8px 24px rgba(16,30,54,.10);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 40px; padding-block: 24px 40px; }
+
+  header.top { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  header.top h1 {
+    font-size: clamp(1.4rem, 1.1rem + 1.4vw, 2rem);
+    font-weight: 700; margin: 0; letter-spacing: -0.02em; text-wrap: balance;
+  }
+  header.top .sub { color: var(--muted); font-size: .95rem; }
+  .lede { color: var(--muted); max-width: 70ch; margin: 6px 0 20px; font-size: .95rem; }
+  .lede b { color: var(--fg); font-weight: 600; }
+  code.k { font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--accent); font-size: .92em; }
+
+  .grid { display: grid; grid-template-columns: 290px 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 16px;
+  }
+  .panel h2 {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+    margin: 0 0 12px; font-weight: 600;
+  }
+  .ctl { display: flex; flex-direction: column; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .field label { font-size: .82rem; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+  .field label .val { color: var(--fg); font-family: "IBM Plex Mono", monospace; }
+  select, input[type="range"] { width: 100%; }
+  select {
+    background: var(--panel-2); color: var(--fg); border: 1px solid var(--edge);
+    border-radius: 8px; padding: 8px 10px; font: inherit; font-size: .9rem;
+  }
+  input[type="range"] { accent-color: var(--accent); }
+  .seg { display: flex; gap: 6px; }
+  .seg button {
+    flex: 1; background: var(--panel-2); color: var(--fg); border: 1px solid var(--edge);
+    border-radius: 8px; padding: 8px 6px; font: inherit; font-size: .85rem; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #06201e; border-color: var(--accent); font-weight: 600; }
+  .btn-row { display: flex; gap: 8px; }
+  button.action {
+    flex: 1; background: var(--panel-2); color: var(--fg); border: 1px solid var(--edge);
+    border-radius: 8px; padding: 9px 10px; font: inherit; font-size: .88rem; cursor: pointer;
+    transition: border-color .15s, transform .05s;
+  }
+  button.action:hover { border-color: var(--accent); }
+  button.action:active { transform: translateY(1px); }
+  button.action.primary { background: var(--accent); color: #06201e; border-color: var(--accent); font-weight: 600; }
+  button:focus-visible, select:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .stage { position: relative; }
+  .stagewrap {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 10px; overflow: hidden;
+  }
+  svg#graph { width: 100%; height: auto; display: block; touch-action: manipulation; }
+  svg#graph .node { cursor: pointer; }
+  svg#graph text { font-family: "IBM Plex Mono", monospace; }
+
+  .hint {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px;
+    background: var(--panel-2); border: 1px solid var(--edge); color: var(--fg);
+    padding: 7px 14px; border-radius: 999px; font-size: .84rem; box-shadow: var(--shadow);
+    pointer-events: none; max-width: 92%; text-align: center;
+  }
+  .hint b { color: var(--accent); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px 18px; margin-top: 12px; font-size: .82rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+  .swatch.line { width: 20px; height: 4px; border-radius: 2px; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 18px; }
+  @media (max-width: 680px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; padding: 12px 14px; }
+  .stat .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  .stat .num { font-family: "IBM Plex Mono", monospace; font-size: 1.5rem; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .stat .note { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+  .stat.highlight { border-color: var(--accent); }
+  .stat .num.good { color: var(--shortest); }
+  .stat .num.warn { color: var(--landmark); }
+  .stat .num.cap  { color: var(--routed); }
+
+  .foot { margin-top: 22px; color: var(--muted); font-size: .82rem; max-width: 80ch; }
+  .foot b { color: var(--fg); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Compact Routing Explorer</h1>
+    <span class="sub">Thorup-Zwick, stretch 3, name-dependent</span>
+  </header>
+  <p class="lede">
+    Each node stores a routing table of only about <code class="k">&radic;n&nbsp;log&nbsp;n</code> entries, not the full
+    <code class="k">n</code>. Routing uses only those tables and the target's label, yet the path taken is never more than
+    <b>3&times;</b> the true shortest path. Pick a <b>source</b> and a <b>target</b> below and watch the route build hop by hop.
+  </p>
+
+  <div class="grid">
+    <!-- Controls -->
+    <aside class="panel ctl" aria-label="Controls">
+      <h2>Graph</h2>
+      <div class="field">
+        <label>Structure</label>
+        <div class="seg" id="typeSeg" role="group" aria-label="Graph structure">
+          <button data-type="grid" aria-pressed="true">Grid</button>
+          <button data-type="regular" aria-pressed="false">Random</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Vertices <span class="val" id="nVal">36</span></label>
+        <input type="range" id="nRange" min="9" max="64" step="1" value="36" />
+      </div>
+      <div class="field" id="pField">
+        <label>Edge probability <span class="val" id="pVal">0.12</span></label>
+        <input type="range" id="pRange" min="4" max="30" step="1" value="12" />
+      </div>
+      <div class="field">
+        <label>Edge weights</label>
+        <select id="distSel">
+          <option value="uniform">Uniform 1..10</option>
+          <option value="geometric">Geometric (2^i)</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="action primary" id="regen">New graph</button>
+        <button class="action" id="reA" title="Resample the landmark set A">Resample A</button>
+      </div>
+      <div class="btn-row">
+        <button class="action" id="clearSel">Clear route</button>
+      </div>
+
+      <h2 style="margin-top:6px">The route</h2>
+      <div class="field">
+        <label>Source w <span class="val" id="srcVal">-</span></label>
+        <label>Target v <span class="val" id="tgtVal">-</span></label>
+      </div>
+    </aside>
+
+    <!-- Stage -->
+    <section class="stage">
+      <div class="stagewrap">
+        <svg id="graph" viewBox="0 0 1000 700" role="img" aria-label="Graph visualization"></svg>
+        <div class="hint" id="hint">Click a node to set the <b>source</b></div>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--landmark)"></i>Group A (landmark)</span>
+        <span><i class="swatch" style="background:var(--cluster)"></i>Cluster of source</span>
+        <span><i class="swatch" style="background:var(--routed);border-radius:50%"></i>Source</span>
+        <span><i class="swatch" style="background:var(--shortest);border-radius:50%"></i>Target</span>
+        <span><i class="swatch line" style="background:var(--routed)"></i>Routed path</span>
+        <span><i class="swatch line" style="background:var(--shortest)"></i>Shortest path</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat"><div class="label">Vertices</div><div class="num" id="stN">-</div><div class="note">n</div></div>
+    <div class="stat"><div class="label">Group A</div><div class="num warn" id="stA">-</div><div class="note" id="stANote">landmarks, ~&radic;n</div></div>
+    <div class="stat"><div class="label">Avg table size</div><div class="num" id="stTbl">-</div><div class="note">entries / node</div></div>
+    <div class="stat highlight"><div class="label">Stretch</div><div class="num" id="stStretch">-</div><div class="note" id="stStretchNote">routed / shortest</div></div>
+  </div>
+
+  <p class="foot">
+    <b>How it works.</b> A random set <b>A</b> of landmarks is sampled, each node with probability <code class="k">1/&radic;n</code>.
+    Every node knows its nearest landmark (its centroid) and keeps a routing-table entry for every landmark and for every
+    node in its <b>cluster</b> (the nodes closer to it than to their own landmark). A target's label carries its centroid
+    and the first hop out of it. If the target is a landmark or sits in the source's cluster, the route goes straight there;
+    otherwise it detours through the target's landmark. That single detour is what bounds the stretch at 3.
+  </p>
+</div>
+
+<script>
+"use strict";
+(function () {
+  const svg = document.getElementById("graph");
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const VW = 1000, VH = 700, PAD = 54;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- seeded RNG (mulberry32) ----
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const state = {
+    type: "grid", n: 36, p: 0.12, dist: "uniform",
+    seed: (Math.random() * 1e9) | 0,
+    graph: null, nodes: 0, adj: null, pos: null,
+    dist2: null, next2: null,
+    A: null, centroid: null, cluster: null, label: null, chart: null,
+    source: null, target: null, anim: null,
+  };
+
+  // ---- graph generation ----
+  function weight(rng) {
+    if (state.dist === "uniform") return 1 + Math.floor(rng() * 10);
+    let i = 0; while (rng() < 0.5) i++; return Math.min(2 ** i, 1024);
+  }
+
+  function buildGraph() {
+    const rng = makeRng(state.seed);
+    let n, adj, pos;
+    if (state.type === "grid") {
+      const side = Math.max(2, Math.floor(Math.sqrt(state.n)));
+      n = side * side;
+      adj = Array.from({ length: n }, () => new Map());
+      pos = new Array(n);
+      const id = (r, c) => r * side + c;
+      for (let r = 0; r < side; r++) for (let c = 0; c < side; c++) {
+        pos[id(r, c)] = { x: c / (side - 1), y: r / (side - 1) };
+        if (c + 1 < side) addEdge(adj, id(r, c), id(r, c + 1), weight(rng));
+        if (r + 1 < side) addEdge(adj, id(r, c), id(r + 1, c), weight(rng));
+      }
+    } else {
+      n = state.n;
+      adj = Array.from({ length: n }, () => new Map());
+      for (let u = 0; u < n; u++) for (let v = u + 1; v < n; v++) {
+        if (rng() < state.p) addEdge(adj, u, v, weight(rng));
+      }
+      connect(adj, n, rng);
+      pos = forceLayout(adj, n, rng);
+    }
+    state.nodes = n; state.adj = adj; state.pos = pos;
+  }
+
+  function addEdge(adj, u, v, w) { adj[u].set(v, w); adj[v].set(u, w); }
+
+  function connect(adj, n, rng) {
+    // union-find to find components, then link them
+    const parent = Array.from({ length: n }, (_, i) => i);
+    const find = x => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    const uni = (a, b) => { parent[find(a)] = find(b); };
+    for (let u = 0; u < n; u++) for (const v of adj[u].keys()) if (v > u) uni(u, v);
+    const reps = [];
+    for (let i = 0; i < n; i++) if (find(i) === i) reps.push(i);
+    for (let i = 1; i < reps.length; i++) addEdge(adj, reps[i - 1], reps[i], weight(rng));
+  }
+
+  // ---- force-directed layout for random graphs ----
+  function forceLayout(adj, n, rng) {
+    const p = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      p[i] = { x: 0.5 + 0.4 * Math.cos(a) + (rng() - 0.5) * 0.02, y: 0.5 + 0.4 * Math.sin(a) + (rng() - 0.5) * 0.02 };
+    }
+    const k = 0.9 / Math.sqrt(n);
+    for (let it = 0; it < 400; it++) {
+      const disp = Array.from({ length: n }, () => ({ x: 0, y: 0 }));
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+        let dx = p[i].x - p[j].x, dy = p[i].y - p[j].y;
+        let d2 = dx * dx + dy * dy || 1e-4;
+        const rep = (k * k) / d2 * 0.015;
+        dx *= rep; dy *= rep;
+        disp[i].x += dx; disp[i].y += dy; disp[j].x -= dx; disp[j].y -= dy;
+      }
+      for (let u = 0; u < n; u++) for (const v of adj[u].keys()) if (v > u) {
+        let dx = p[u].x - p[v].x, dy = p[u].y - p[v].y;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1e-4;
+        const att = (d - k) * 0.12;
+        dx = dx / d * att; dy = dy / d * att;
+        disp[u].x -= dx; disp[u].y -= dy; disp[v].x += dx; disp[v].y += dy;
+      }
+      const cool = 0.9 * (1 - it / 400) + 0.02;
+      for (let i = 0; i < n; i++) {
+        p[i].x += Math.max(-0.05, Math.min(0.05, disp[i].x)) * cool;
+        p[i].y += Math.max(-0.05, Math.min(0.05, disp[i].y)) * cool;
+      }
+    }
+    // normalize to [0,1]
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const q of p) { minX = Math.min(minX, q.x); maxX = Math.max(maxX, q.x); minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y); }
+    const sx = maxX - minX || 1, sy = maxY - minY || 1;
+    return p.map(q => ({ x: (q.x - minX) / sx, y: (q.y - minY) / sy }));
+  }
+
+  // ---- all-pairs Dijkstra with next-hop ----
+  function dijkstra(src) {
+    const n = state.nodes, adj = state.adj;
+    const dist = new Array(n).fill(Infinity);
+    const prev = new Array(n).fill(-1);
+    const next = new Array(n).fill(-1);
+    const done = new Array(n).fill(false);
+    dist[src] = 0; next[src] = src;
+    for (let iter = 0; iter < n; iter++) {
+      let u = -1, best = Infinity;
+      for (let i = 0; i < n; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
+      if (u === -1) break;
+      done[u] = true;
+      if (u !== src) next[u] = (prev[u] === src) ? u : next[prev[u]];
+      for (const [v, w] of adj[u]) if (!done[v] && dist[u] + w < dist[v]) {
+        dist[v] = dist[u] + w; prev[v] = u;
+      }
+    }
+    return { dist, next };
+  }
+
+  function allPairs() {
+    const n = state.nodes;
+    state.dist2 = new Array(n); state.next2 = new Array(n);
+    for (let s = 0; s < n; s++) { const r = dijkstra(s); state.dist2[s] = r.dist; state.next2[s] = r.next; }
+  }
+
+  // ---- Thorup-Zwick preprocessing ----
+  function preprocess() {
+    const n = state.nodes, rng = makeRng(state.seed ^ 0x9e3779b9);
+    const prob = 1 / Math.sqrt(n);
+    let A = [];
+    for (let v = 0; v < n; v++) if (rng() < prob) A.push(v);
+    if (A.length === 0) A = [0]; // A must be non-empty for centroids to exist
+    const inA = new Array(n).fill(false); A.forEach(v => inA[v] = true);
+
+    const centroid = new Array(n);
+    for (let v = 0; v < n; v++) {
+      if (inA[v]) { centroid[v] = v; continue; }
+      let best = Infinity, c = A[0];
+      for (const a of A) if (state.dist2[v][a] < best) { best = state.dist2[v][a]; c = a; }
+      centroid[v] = c;
+    }
+
+    // cluster[v] = { u : d(v,u) < d(u, centroid[u]) }
+    const cluster = Array.from({ length: n }, () => []);
+    for (let v = 0; v < n; v++) for (let u = 0; u < n; u++) {
+      if (u === v) continue;
+      if (state.dist2[v][u] < state.dist2[u][centroid[u]]) cluster[v].push(u);
+    }
+
+    // label[v] = { centroid, firstHop out of the centroid toward v }
+    const label = new Array(n);
+    for (let v = 0; v < n; v++) {
+      const c = centroid[v];
+      label[v] = { c, firstHop: c === v ? v : state.next2[c][v] };
+    }
+
+    // routing chart[v]: next hop toward every landmark and every node in cluster[v]
+    const chart = Array.from({ length: n }, () => new Map());
+    for (let v = 0; v < n; v++) {
+      for (const a of A) if (a !== v) chart[v].set(a, state.next2[v][a]);
+      for (const u of cluster[v]) if (u !== v) chart[v].set(u, state.next2[v][u]);
+    }
+
+    state.A = A; state.inA = inA; state.centroid = centroid;
+    state.cluster = cluster; state.label = label; state.chart = chart;
+  }
+
+  // ---- routing using only charts + labels ----
+  function hop(from, to) {
+    const nx = state.chart[from].get(to);
+    return nx === undefined ? state.next2[from][to] : nx; // fallback should never trigger
+  }
+
+  function route(w, v) {
+    const path = [w];
+    let cur = w;
+    const inCluster = state.cluster[w].includes(v);
+    if (state.inA[v] || inCluster) {
+      while (cur !== v) { cur = hop(cur, v); path.push(cur); }
+      return path;
+    }
+    // detour through the target's landmark
+    const c = state.label[v].c;
+    while (cur !== c) { cur = hop(cur, c); path.push(cur); }
+    const fh = state.label[v].firstHop;
+    if (fh !== cur) { cur = fh; path.push(cur); }
+    while (cur !== v) { cur = hop(cur, v); path.push(cur); }
+    return path;
+  }
+
+  function pathWeight(path) {
+    let s = 0;
+    for (let i = 0; i + 1 < path.length; i++) s += state.adj[path[i]].get(path[i + 1]);
+    return s;
+  }
+  function shortestPath(w, v) {
+    const p = [w]; let cur = w;
+    while (cur !== v) { cur = state.next2[cur][v]; p.push(cur); }
+    return p;
+  }
+
+  // ---- rendering ----
+  const px = p => PAD + p.x * (VW - 2 * PAD);
+  const py = p => PAD + p.y * (VH - 2 * PAD);
+
+  function el(tag, attrs) {
+    const e = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  function nodeRadius() {
+    const n = state.nodes;
+    return Math.max(10, Math.min(20, 150 / Math.sqrt(n)));
+  }
+
+  function render() {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const n = state.nodes, pos = state.pos, r = nodeRadius();
+    const showWeights = n <= 49;
+    const clusterSet = state.source != null ? new Set(state.cluster[state.source]) : new Set();
+
+    const gEdges = el("g", {}), gHi = el("g", {}), gNodes = el("g", {}), gLabels = el("g", {});
+    svg.appendChild(gEdges); svg.appendChild(gHi); svg.appendChild(gNodes); svg.appendChild(gLabels);
+
+    // base edges + weights
+    for (let u = 0; u < n; u++) for (const [v, w] of state.adj[u]) if (v > u) {
+      const a = pos[u], b = pos[v];
+      gEdges.appendChild(el("line", { x1: px(a), y1: py(a), x2: px(b), y2: py(b), stroke: "var(--edge)", "stroke-width": 1.6 }));
+      if (showWeights) {
+        const t = el("text", {
+          x: (px(a) + px(b)) / 2, y: (py(a) + py(b)) / 2 - 3,
+          fill: "var(--muted)", "font-size": 11, "text-anchor": "middle",
+        });
+        t.textContent = w; gLabels.appendChild(t);
+      }
+    }
+
+    // highlighted paths (only when a full route exists)
+    if (state.source != null && state.target != null) {
+      const sp = shortestPath(state.source, state.target);
+      drawPath(gHi, sp, "var(--shortest)", 8, 0.5, "sp");
+      const rp = route(state.source, state.target);
+      drawPath(gHi, rp, "var(--routed)", 4, 1, "rp", !reduceMotion);
+    }
+
+    // nodes
+    for (let i = 0; i < n; i++) {
+      const p = pos[i];
+      let fill = "var(--node)";
+      if (clusterSet.has(i)) fill = "var(--cluster)";
+      if (state.inA[i]) fill = "var(--landmark)";
+      const isSrc = i === state.source, isTgt = i === state.target;
+      const g = el("g", { class: "node", tabindex: 0, role: "button", "aria-label": "node " + i });
+      const c = el("circle", { cx: px(p), cy: py(p), r: (isSrc || isTgt) ? r + 3 : r, fill });
+      if (isSrc) c.setAttribute("stroke", "var(--routed)"), c.setAttribute("stroke-width", 4);
+      else if (isTgt) c.setAttribute("stroke", "var(--shortest)"), c.setAttribute("stroke-width", 4);
+      else c.setAttribute("stroke", "rgba(0,0,0,.25)"), c.setAttribute("stroke-width", 1);
+      g.appendChild(c);
+      const lbl = el("text", {
+        x: px(p), y: py(p) + 4, "text-anchor": "middle", "font-size": Math.round(r * 0.85),
+        "font-weight": 600, fill: state.inA[i] || clusterSet.has(i) ? "#10131a" : "var(--node-fg)",
+        "pointer-events": "none",
+      });
+      lbl.textContent = i;
+      g.appendChild(lbl);
+      g.addEventListener("click", () => pick(i));
+      g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(i); } });
+      gNodes.appendChild(g);
+    }
+  }
+
+  function drawPath(group, path, color, width, opacity, cls, animate) {
+    for (let i = 0; i + 1 < path.length; i++) {
+      const a = state.pos[path[i]], b = state.pos[path[i + 1]];
+      const ln = el("line", {
+        x1: px(a), y1: py(a), x2: px(b), y2: py(b), stroke: color,
+        "stroke-width": width, "stroke-linecap": "round", opacity,
+      });
+      if (animate) {
+        const len = Math.hypot(px(b) - px(a), py(b) - py(a));
+        ln.setAttribute("stroke-dasharray", len);
+        ln.setAttribute("stroke-dashoffset", len);
+        ln.style.transition = "stroke-dashoffset .28s ease";
+        ln.style.transitionDelay = (i * 0.26) + "s";
+        requestAnimationFrame(() => requestAnimationFrame(() => ln.setAttribute("stroke-dashoffset", 0)));
+      }
+      group.appendChild(ln);
+    }
+  }
+
+  // ---- interaction ----
+  function pick(i) {
+    if (state.source == null) { state.source = i; state.target = null; }
+    else if (state.target == null && i !== state.source) { state.target = i; }
+    else { state.source = i; state.target = null; }
+    updateHint(); render(); updateRouteStats();
+  }
+
+  function updateHint() {
+    const hint = document.getElementById("hint");
+    document.getElementById("srcVal").textContent = state.source != null ? state.source : "-";
+    document.getElementById("tgtVal").textContent = state.target != null ? state.target : "-";
+    if (state.source == null) hint.innerHTML = "Click a node to set the <b>source</b>";
+    else if (state.target == null) hint.innerHTML = "Source is <b>" + state.source + "</b>. Now click the <b>target</b>";
+    else hint.innerHTML = "Routing <b>" + state.source + "</b> &rarr; <b>" + state.target + "</b>. Click any node to restart";
+  }
+
+  function updateRouteStats() {
+    const st = document.getElementById("stStretch");
+    const note = document.getElementById("stStretchNote");
+    if (state.source != null && state.target != null) {
+      const rp = route(state.source, state.target), sp = shortestPath(state.source, state.target);
+      const rw = pathWeight(rp), sw = pathWeight(sp);
+      const stretch = sw ? rw / sw : 1;
+      st.textContent = stretch.toFixed(2) + "x";
+      st.className = "num " + (stretch <= 1.0001 ? "good" : stretch >= 2.5 ? "cap" : "warn");
+      note.textContent = "routed " + rw + " / shortest " + sw;
+    } else {
+      st.textContent = "-"; st.className = "num"; note.textContent = "pick source + target";
+    }
+  }
+
+  function updateGraphStats() {
+    const n = state.nodes;
+    document.getElementById("stN").textContent = n;
+    document.getElementById("stA").textContent = state.A.length;
+    document.getElementById("stANote").textContent = "landmarks, √n ≈ " + Math.round(Math.sqrt(n));
+    let tbl = 0; for (let v = 0; v < n; v++) tbl += state.chart[v].size;
+    document.getElementById("stTbl").textContent = (tbl / n).toFixed(1);
+  }
+
+  // ---- rebuild pipeline ----
+  function rebuild(newGraph) {
+    if (newGraph) buildGraph();
+    allPairs();
+    preprocess();
+    // keep selection only if still valid
+    if (state.source != null && state.source >= state.nodes) state.source = null;
+    if (state.target != null && state.target >= state.nodes) state.target = null;
+    updateHint(); updateGraphStats(); updateRouteStats(); render();
+  }
+
+  // ---- wire up controls ----
+  document.getElementById("typeSeg").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    state.type = b.dataset.type;
+    for (const btn of e.currentTarget.children) btn.setAttribute("aria-pressed", btn === b);
+    document.getElementById("pField").style.opacity = state.type === "regular" ? "1" : ".4";
+    document.getElementById("pRange").disabled = state.type !== "regular";
+    state.source = state.target = null;
+    rebuild(true);
+  });
+  const nRange = document.getElementById("nRange");
+  nRange.addEventListener("input", () => {
+    state.n = +nRange.value; document.getElementById("nVal").textContent = state.n;
+  });
+  nRange.addEventListener("change", () => { state.source = state.target = null; rebuild(true); });
+  const pRange = document.getElementById("pRange");
+  pRange.addEventListener("input", () => {
+    state.p = +pRange.value / 100; document.getElementById("pVal").textContent = state.p.toFixed(2);
+  });
+  pRange.addEventListener("change", () => { state.source = state.target = null; rebuild(true); });
+  document.getElementById("distSel").addEventListener("change", e => {
+    state.dist = e.target.value; state.source = state.target = null; rebuild(true);
+  });
+  document.getElementById("regen").addEventListener("click", () => {
+    state.seed = (Math.random() * 1e9) | 0; state.source = state.target = null; rebuild(true);
+  });
+  document.getElementById("reA").addEventListener("click", () => {
+    state.seed = (state.seed ^ ((Math.random() * 1e9) | 0)) >>> 0; preprocess();
+    updateGraphStats(); updateRouteStats(); render();
+  });
+  document.getElementById("clearSel").addEventListener("click", () => {
+    state.source = state.target = null; updateHint(); updateRouteStats(); render();
+  });
+
+  // init
+  document.getElementById("pField").style.opacity = ".4";
+  document.getElementById("pRange").disabled = true;
+  document.getElementById("pVal").textContent = state.p.toFixed(2);
+  rebuild(true);
+})();
+</script>
+</body>
+</html>
